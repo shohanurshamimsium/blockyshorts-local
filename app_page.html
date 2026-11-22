@@ -21,6 +21,7 @@ pre{background:#0d0f13;border:1px solid var(--line);border-radius:8px;padding:10
 img,video{max-width:100%;border-radius:8px;border:1px solid var(--line)}video{max-height:620px}
 .msg{color:var(--bad);margin-top:8px;min-height:1em}.hint{color:var(--mut);font-size:13px}
 .vid{margin-top:14px}.vid .t{display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+.drop .ttl{font-weight:600}.drop.ok .sm{color:var(--mut)}button.rm{margin-top:8px;padding:4px 10px;font-size:12px;background:#3d2121;color:var(--bad)}
 details summary{cursor:pointer;color:var(--mut);margin-top:10px}
 </style></head><body><div class="wrap">
 <h1>Blocky <span>Video Maker</span></h1>
@@ -36,8 +37,8 @@ details summary{cursor:pointer;color:var(--mut);margin-top:10px}
  <div><select id="story"></select><div class="hint">Story file = the .py I write for each script.</div></div></div></div>
 
 <div class="card"><h2>Files</h2><div class="row">
- <div><div class="drop" id="dAudio" onclick="pick('audio')">🎙 Drop voiceover here<br><small>mp3 / wav / m4a</small></div><input type="file" id="fAudio" hidden accept=".mp3,.wav,.m4a,.ogg,.flac,.aac"></div>
- <div><div class="drop" id="dSrt" onclick="pick('srt')">📝 Drop SRT here<br><small>.srt</small></div><input type="file" id="fSrt" hidden accept=".srt"></div>
+ <div><div class="drop" id="dAudio" onclick="pick('audio')"><span class="ico">🎙</span><b class="ttl">Drop voiceover here</b><br><small class="sm">mp3 / wav / m4a</small><br><button class="rm" id="rAudio" onclick="event.stopPropagation();removeFile('audio')" style="display:none">✕ Remove</button></div><input type="file" id="fAudio" hidden accept=".mp3,.wav,.m4a,.ogg,.flac,.aac"></div>
+ <div><div class="drop" id="dSrt" onclick="pick('srt')"><span class="ico">📝</span><b class="ttl">Drop SRT here</b><br><small class="sm">.srt</small><br><button class="rm" id="rSrt" onclick="event.stopPropagation();removeFile('srt')" style="display:none">✕ Remove</button></div><input type="file" id="fSrt" hidden accept=".srt"></div>
  <div><div class="drop" id="dStory" onclick="pick('story')">🧱 Drop new story .py here<br><small>optional</small></div><input type="file" id="fStory" hidden accept=".py"></div>
 </div><div class="msg" id="upMsg"></div></div>
 
@@ -73,12 +74,17 @@ async function upload(kind,file){$('upMsg').textContent='Uploading '+file.name+'
 async function saveEngine(){const r=await fetch('/api/config',{method:'POST',body:JSON.stringify({engine:$('enginePath').value})});const j=await r.json();$('engMsg').textContent=r.ok?'':j.error;load()}
 async function run(mode){$('runMsg').textContent='';const r=await fetch('/api/run',{method:'POST',body:JSON.stringify({project:proj(),story:$('story').value,mode,gpu:$('gpu').checked,fresh:$('fresh').checked,quality:$('quality').value})});
  const j=await r.json();if(!r.ok)$('runMsg').textContent=j.error||j.message;else{$('runMsg').textContent='';lastDone=null}await load()}
+async function removeFile(kind){await fetch('/api/upload?project='+encodeURIComponent(proj())+'&kind='+kind,{method:'DELETE'});await load()}
+window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
 async function stopJob(){await fetch('/api/stop',{method:'POST',body:'{}'})}
 async function openFolder(){await fetch('/api/open',{method:'POST',body:'{}'})}
 function projChanged(){vidKey='';sheetSrc='';refresh()}
+function card(id,rid,f,ico,empty,sub){const el=$(id);el.className='drop'+(f?' ok':'');
+ el.querySelector('.ico').textContent=f?'✅':ico;el.querySelector('.ttl').textContent=f?f.name:empty;
+ el.querySelector('.sm').textContent=f?f.mb+' MB · added '+new Date(f.time*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+' · drop a new file to replace':sub;
+ $(rid).style.display=f?'':'none'}
 function refresh(){if(!S)return;const p=S.projects.find(x=>x.name===proj())||{};
- $('dAudio').className='drop'+(p.audio?' ok':'');$('dAudio').firstChild.textContent=p.audio?'✅ Voiceover ready ':'🎙 Drop voiceover here';
- $('dSrt').className='drop'+(p.srt?' ok':'');$('dSrt').firstChild.textContent=p.srt?'✅ SRT ready ':'📝 Drop SRT here';
+ card('dAudio','rAudio',p.audio,'🎙','Drop voiceover here','mp3 / wav / m4a');card('dSrt','rSrt',p.srt,'📝','Drop SRT here','.srt');
  const vids=p.videos||[];const key=JSON.stringify(vids.map(v=>[v.name,v.mtime]));
  $('outCard').style.display=(p.preview||vids.length)?'':'none';
  $('sheetBox').style.display=p.preview?'':'none';

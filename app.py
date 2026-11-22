@@ -43,10 +43,23 @@ def videos_for(name):
         vs.append({"name": os.path.basename(p), "url": "/out/" + os.path.basename(p), "mtime": os.path.getmtime(p), "mb": round(os.path.getsize(p) / 1e6, 1)})
     return sorted(vs, key=lambda v: -v["mtime"])
 
+def meta_path(name): return os.path.join(PROJECTS, name, "audio", "files.json")
+def read_meta(name):
+    try: return json.load(open(meta_path(name), encoding="utf-8"))
+    except Exception: return {}
+def write_meta(name, m):
+    os.makedirs(os.path.dirname(meta_path(name)), exist_ok=True)
+    json.dump(m, open(meta_path(name), "w", encoding="utf-8"))
+
+def file_card(name, kind, path):
+    if not path or not os.path.isfile(path): return None
+    m = read_meta(name).get(kind, {})
+    return {"name": m.get("name") or os.path.basename(path), "mb": round(os.path.getsize(path) / 1e6, 2), "time": m.get("time") or os.path.getmtime(path)}
+
 def project_info(name):
     d = os.path.join(PROJECTS, name)
     audio = [f for f in glob.glob(os.path.join(d, "audio", "vo.*")) if not f.endswith(".srt")]
-    return {"name": name, "audio": bool(audio), "srt": os.path.isfile(os.path.join(d, "audio", "vo.srt")),
+    return {"name": name, "audio": file_card(name, "audio", audio[0] if audio else None), "srt": file_card(name, "srt", os.path.join(d, "audio", "vo.srt")),
             "preview": os.path.isfile(os.path.join(d, "build", "preview", "sheet.jpg")),
             "videos": videos_for(name)}
 
@@ -165,14 +178,30 @@ class H(BaseHTTPRequestHandler):
             for old in glob.glob(os.path.join(d, "vo.*")):
                 if not old.endswith(".srt"): os.remove(old)
             open(os.path.join(d, "vo" + ext), "wb").write(data)
+            m = read_meta(proj); m["audio"] = {"name": name, "time": time.time()}; write_meta(proj, m)
         elif kind == "srt":
             d = os.path.join(PROJECTS, proj, "audio"); os.makedirs(d, exist_ok=True)
             open(os.path.join(d, "vo.srt"), "wb").write(data)
+            m = read_meta(proj); m["srt"] = {"name": name, "time": time.time()}; write_meta(proj, m)
         elif kind == "story":
             if not name.lower().endswith(".py"): return self._json({"error": "story file must be .py"}, 400)
             open(os.path.join(STORIES, safe(os.path.splitext(name)[0]) + ".py"), "wb").write(data)
         else: return self._json({"error": "bad kind"}, 400)
         self._json({"ok": True, "project": proj, "info": project_info(proj)})
+    def do_DELETE(self):
+        u = urlparse(self.path); q = {k: v[0] for k, v in parse_qs(u.query).items()}
+        if u.path != "/api/upload": return self._json({"error": "not found"}, 404)
+        proj, kind = safe(q.get("project")), q.get("kind")
+        d = os.path.join(PROJECTS, proj, "audio")
+        if kind == "audio":
+            for f in glob.glob(os.path.join(d, "vo.*")):
+                if not f.endswith(".srt"): os.remove(f)
+        elif kind == "srt":
+            f = os.path.join(d, "vo.srt")
+            if os.path.isfile(f): os.remove(f)
+        else: return self._json({"error": "bad kind"}, 400)
+        m = read_meta(proj); m.pop(kind, None); write_meta(proj, m) if os.path.isdir(d) else None
+        self._json({"ok": True, "info": project_info(proj)})
     def do_POST(self):
         u = urlparse(self.path)
         try: d = json.loads(self.body() or b"{}")
