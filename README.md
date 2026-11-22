@@ -1,12 +1,26 @@
-# EASIEST WAY: the web app
+# blockyshorts-local
+
+Offline web app that turns a **voiceover (mp3) + subtitles (SRT)** into a finished blocky 3D "In this world..." story short (9:16, up to 1080x1920) on your own PC. No AI model, no cloud, no per-video cost.
+
+You give it three things: a voiceover, its SRT, and a *story file* (a small Python file describing the scenes, characters, camera and captions for that script). The app aligns the captions to the audio, renders every frame in headless Chrome (Three.js), and encodes the video with ffmpeg. Quality presets: Draft (720p), Standard (1080p), Max (1080p, best encode).
+
+**Requirements (Windows):** Python 3.10+ (with `numpy`), Node.js 22+, ffmpeg, Google Chrome. A GPU is optional but makes rendering much faster. Run `install_windows.bat` to install them with winget, then `python setup_check.py` to verify.
+
+**Engine credit:** the `blocky-shorts/` folder is the blocky-shorts renderer taken from the "Roblox Blocky" skill package, with two small patches (see the last section). The rest of this repo (web app, pipeline, story library, cast library) is the local workflow around it.
+
+**Layout:** `start_app.bat` (launch), `app.py` + `app_page.html` (web app), `run_video.py` (pipeline), `lib/` (story + cast library), `examples/` (a working example), `templates/` (blank story starter), `stories/` (your story files), `projects/` and `outputs/` (created at run time, git-ignored).
+
+---
+
+## Quick start: the web app
 1. Double-click `start_app.bat` (browser opens at http://127.0.0.1:8765; keep the black window open).
-2. First time only: paste the engine folder path (e.g. `I:\blocky-local\blocky-shorts`) and Save.
-3. Type a project name, pick the story file (or drop a new story .py I give you), drop the voiceover mp3 and the SRT.
-4. Press **Preview sheet**, check it, then **Make video**. Tick "Use GPU" for your RTX 3060. Video appears on the page with a Download button.
+2. The app finds the `blocky-shorts` engine folder next to it automatically. If it asks, paste the full path of that folder and press Save.
+3. Type a project name, pick the story file (or drop in a new story .py), drop the voiceover mp3 and the SRT.
+4. Press **Preview sheet**, check it, then **Make video**. Tick "Use GPU" if you have one. Video appears on the page with a Download button.
 Files live in `projects\<name>\` next to the app. The PowerShell steps below still work as a backup.
 
 ---
-# Blocky story videos: local workflow (no AI model, no internet while rendering)
+## Workflow details: Blocky story videos, local workflow (no AI model, no internet while rendering)
 
 You write nothing by hand. The split is:
 
