@@ -29,7 +29,7 @@ def safe(name):
     return n or "my_video"
 
 def list_stories():
-    out = []
+    out = [{"label": "🤖 Auto: build the scenes from the SRT (no story file)", "path": "AUTO"}]
     for p in sorted(glob.glob(os.path.join(STORIES, "*.py"))): out.append({"label": "stories/" + os.path.basename(p), "path": p})
     for p in sorted(glob.glob(os.path.join(HERE, "examples", "*", "story_*.py"))):
         out.append({"label": "example: " + os.path.relpath(p, HERE).replace("\\", "/"), "path": p})
@@ -69,10 +69,11 @@ def list_projects():
 JOB = {"running": False, "project": None, "mode": None, "log": [], "progress": None, "status": "idle", "started": 0, "proc": None, "pct": 0, "nxt": 0, "label": "", "stage_t": 0, "result": None}
 LOCK = threading.Lock()
 
-def run_job(project, story, mode, gpu, fresh, quality):
+def run_job(project, story, mode, gpu, fresh, quality, narrator="boy"):
     eng = guess_engine()
     cmd = [sys.executable, "-u", os.path.join(HERE, "run_video.py"), "--engine", eng,
-           "--project", os.path.join(PROJECTS, project), "--story", story]
+           "--project", os.path.join(PROJECTS, project)]
+    cmd += ["--auto", "--narrator", narrator] if story == "AUTO" else ["--story", story]
     if mode == "preview": cmd.append("--preview-only")
     if gpu: cmd.append("--gpu")
     if fresh: cmd.append("--fresh")
@@ -108,11 +109,11 @@ def run_job(project, story, mode, gpu, fresh, quality):
     finally:
         JOB["running"] = False; JOB["proc"] = None
 
-def start_job(project, story, mode, gpu, fresh, quality):
+def start_job(project, story, mode, gpu, fresh, quality, narrator="boy"):
     with LOCK:
         if JOB["running"]: return False, "A job is already running."
         JOB.update(running=True, project=project, mode=mode, log=[], progress=None, status="running", started=time.time(), pct=0, nxt=3, label="Starting", stage_t=time.time(), result=None)
-    threading.Thread(target=run_job, args=(project, story, mode, gpu, fresh, quality), daemon=True).start()
+    threading.Thread(target=run_job, args=(project, story, mode, gpu, fresh, quality, narrator), daemon=True).start()
     return True, "started"
 
 def state():
@@ -133,7 +134,7 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path == "/":
             b = open(os.path.join(HERE, "app_page.html"), "rb").read()
-            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(b))); self.send_header("Cache-Control", "no-store"); self.end_headers(); self.wfile.write(b)
         elif u.path == "/api/state": self._json(state())
         elif u.path.startswith("/file/"): self.serve_file(unquote(u.path[6:]), parse_qs(u.query))
         elif u.path.startswith("/out/"): self.serve_file(unquote(u.path[5:]), parse_qs(u.query), OUTPUTS)
@@ -185,11 +186,18 @@ class H(BaseHTTPRequestHandler):
             m = read_meta(proj); m["srt"] = {"name": name, "time": time.time()}; write_meta(proj, m)
         elif kind == "story":
             if not name.lower().endswith(".py"): return self._json({"error": "story file must be .py"}, 400)
-            open(os.path.join(STORIES, safe(os.path.splitext(name)[0]) + ".py"), "wb").write(data)
+            story_path = os.path.join(STORIES, safe(os.path.splitext(name)[0]) + ".py")
+            open(story_path, "wb").write(data)
+            return self._json({"ok": True, "path": story_path})
         else: return self._json({"error": "bad kind"}, 400)
         self._json({"ok": True, "project": proj, "info": project_info(proj)})
     def do_DELETE(self):
         u = urlparse(self.path); q = {k: v[0] for k, v in parse_qs(u.query).items()}
+        if u.path == "/api/video":
+            name = os.path.basename(q.get("name", ""))
+            f = os.path.join(OUTPUTS, name)
+            if not name.lower().endswith(".mp4") or not os.path.isfile(f): return self._json({"error": "not found"}, 404)
+            os.remove(f); return self._json({"ok": True})
         if u.path != "/api/upload": return self._json({"error": "not found"}, 404)
         proj, kind = safe(q.get("project")), q.get("kind")
         d = os.path.join(PROJECTS, proj, "audio")
@@ -215,9 +223,9 @@ class H(BaseHTTPRequestHandler):
             if not engine_ok(guess_engine()): return self._json({"error": "Engine folder not set."}, 400)
             if not info["audio"] or not info["srt"]: return self._json({"error": "Upload both the audio and the SRT first."}, 400)
             story = d.get("story")
-            if not story or not os.path.isfile(story): return self._json({"error": "Pick a story file."}, 400)
+            if story != "AUTO" and (not story or not os.path.isfile(story)): return self._json({"error": "Pick a story file."}, 400)
             q = d.get("quality") if d.get("quality") in ("draft", "standard", "max") else "standard"
-            ok, msg = start_job(proj, story, d.get("mode", "preview"), bool(d.get("gpu")), bool(d.get("fresh")), q)
+            ok, msg = start_job(proj, story, d.get("mode", "preview"), bool(d.get("gpu")), bool(d.get("fresh")), q, "girl" if d.get("narrator") == "girl" else "boy")
             self._json({"ok": ok, "message": msg}, 200 if ok else 409)
         elif u.path == "/api/open":
             try:

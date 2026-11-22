@@ -20,12 +20,14 @@ label.chk{display:flex;gap:6px;align-items:center;color:var(--mut)}
 pre{background:#0d0f13;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:240px;overflow:auto;font-size:12px;white-space:pre-wrap;margin:10px 0 0}
 img,video{max-width:100%;border-radius:8px;border:1px solid var(--line)}video{max-height:620px}
 .msg{color:var(--bad);margin-top:8px;min-height:1em}.hint{color:var(--mut);font-size:13px}
-.vid{margin-top:14px}.vid .t{display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+.pill{background:#17382a;color:var(--ok);border-radius:99px;padding:1px 9px;font-size:12px;font-weight:700}.vid{margin-top:14px}.vid .t{display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
 .drop .ttl{font-weight:600}.drop.ok .sm{color:var(--mut)}button.rm{margin-top:8px;padding:4px 10px;font-size:12px;background:#3d2121;color:var(--bad)}
+body.dragging .drop{border-color:var(--acc);color:var(--txt);background:#262b36}
+body.dragging::after{content:"Drop your files anywhere";position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font:700 28px system-ui;color:#fff;background:rgba(20,22,28,.72);pointer-events:none;z-index:9}
 details summary{cursor:pointer;color:var(--mut);margin-top:10px}
 </style></head><body><div class="wrap">
 <h1>Blocky <span>Video Maker</span></h1>
-<div class="sub">Drop your voiceover and SRT, pick the story file, press the button. Everything runs on this PC.</div>
+<div class="sub">Drag your voiceover, SRT and story file onto this page (anywhere), pick the story file, press the button. Everything runs on this PC.</div>
 
 <div class="card" id="engineCard" style="display:none"><h2>Engine folder not found</h2>
  <div class="hint">Paste the full path of your <b>blocky-shorts</b> folder (the one that contains <code>scripts</code>).</div>
@@ -34,7 +36,8 @@ details summary{cursor:pointer;color:var(--mut);margin-top:10px}
 
 <div class="card"><h2>Project</h2>
  <div class="row"><div><input type="text" id="proj" value="my_video" oninput="projChanged()"><div class="hint">Each video = one project name. Same name again re-uses its audio.</div></div>
- <div><select id="story"></select><div class="hint">Story file = the .py I write for each script.</div></div></div></div>
+ <div><select id="story" onchange="storyChanged()"></select><div class="hint" id="storyHint">Story file = the .py I write for each script.</div>
+ <div id="narRow" style="display:none;margin-top:8px"><select id="narrator"><option value="boy">Narrator: boy</option><option value="girl">Narrator: girl</option></select></div></div></div></div>
 
 <div class="card"><h2>Files</h2><div class="row">
  <div><div class="drop" id="dAudio" onclick="pick('audio')"><span class="ico">🎙</span><b class="ttl">Drop voiceover here</b><br><small class="sm">mp3 / wav / m4a</small><br><button class="rm" id="rAudio" onclick="event.stopPropagation();removeFile('audio')" style="display:none">✕ Remove</button></div><input type="file" id="fAudio" hidden accept=".mp3,.wav,.m4a,.ogg,.flac,.aac"></div>
@@ -64,32 +67,44 @@ const $=id=>document.getElementById(id);let S=null,lastDone=null,bust=Date.now()
 const proj=()=>$('proj').value.trim().replace(/[^A-Za-z0-9_\-]/g,'_')||'my_video';
 const fmt=s=>{s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 function pick(k){$({audio:'fAudio',srt:'fSrt',story:'fStory'}[k]).click()}
-['audio:dAudio:fAudio','srt:dSrt:fSrt','story:dStory:fStory'].forEach(s=>{const[k,d,f]=s.split(':');const el=$(d);
- el.ondragover=e=>{e.preventDefault();el.classList.add('over')};el.ondragleave=()=>el.classList.remove('over');
- el.ondrop=e=>{e.preventDefault();el.classList.remove('over');if(e.dataTransfer.files[0])upload(k,e.dataTransfer.files[0])};
- $(f).onchange=e=>{if(e.target.files[0])upload(k,e.target.files[0])}});
-async function upload(kind,file){$('upMsg').textContent='Uploading '+file.name+'…';
+const KIND={mp3:'audio',wav:'audio',m4a:'audio',ogg:'audio',flac:'audio',aac:'audio',srt:'srt',py:'story'};
+const kindOf=f=>KIND[(f.name.split('.').pop()||'').toLowerCase()];
+async function routeFiles(files){let bad=[];for(const f of files){const k=kindOf(f);if(k)await upload(k,f);else bad.push(f.name)}
+ if(bad.length)$('upMsg').textContent='Not a voiceover, SRT or story file: '+bad.join(', ')}
+function overlay(on){document.body.classList.toggle('dragging',on)}
+let dragDepth=0;
+window.addEventListener('dragenter',e=>{e.preventDefault();dragDepth++;overlay(true)});
+window.addEventListener('dragover',e=>{e.preventDefault()});
+window.addEventListener('dragleave',e=>{e.preventDefault();dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)overlay(false)});
+window.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;overlay(false);if(e.dataTransfer&&e.dataTransfer.files.length)routeFiles([...e.dataTransfer.files])});
+['fAudio','fSrt','fStory'].forEach(f=>{$(f).onchange=e=>{routeFiles([...e.target.files]);e.target.value=''}});
+async function upload(kind,file){$('upMsg').style.color='';$('upMsg').textContent='Uploading '+file.name+'…';
  const r=await fetch('/api/upload?project='+encodeURIComponent(proj())+'&kind='+kind+'&name='+encodeURIComponent(file.name),{method:'PUT',body:file});
- const j=await r.json();$('upMsg').textContent=r.ok?'':(j.error||'Upload failed');await load()}
+ const j=await r.json();$('upMsg').textContent=r.ok?'':(j.error||'Upload failed');await load();
+ if(kind==='story'&&j.path){const sel=$('story');const o=[...sel.options].find(x=>x.value===j.path);if(o){sel.value=j.path;storyChanged();$('upMsg').style.color='var(--ok)';$('upMsg').textContent='Story file added and selected: '+file.name}}}
 async function saveEngine(){const r=await fetch('/api/config',{method:'POST',body:JSON.stringify({engine:$('enginePath').value})});const j=await r.json();$('engMsg').textContent=r.ok?'':j.error;load()}
-async function run(mode){$('runMsg').textContent='';const r=await fetch('/api/run',{method:'POST',body:JSON.stringify({project:proj(),story:$('story').value,mode,gpu:$('gpu').checked,fresh:$('fresh').checked,quality:$('quality').value})});
+async function run(mode){$('runMsg').textContent='';const r=await fetch('/api/run',{method:'POST',body:JSON.stringify({project:proj(),story:$('story').value,mode,gpu:$('gpu').checked,fresh:$('fresh').checked,quality:$('quality').value,narrator:$('narrator').value})});
  const j=await r.json();if(!r.ok)$('runMsg').textContent=j.error||j.message;else{$('runMsg').textContent='';lastDone=null}await load()}
 async function removeFile(kind){await fetch('/api/upload?project='+encodeURIComponent(proj())+'&kind='+kind,{method:'DELETE'});await load()}
-window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
 async function stopJob(){await fetch('/api/stop',{method:'POST',body:'{}'})}
 async function openFolder(){await fetch('/api/open',{method:'POST',body:'{}'})}
+function storyChanged(){const a=$('story').value==='AUTO';$('narRow').style.display=a?'':'none';$('storyHint').textContent=a?'Auto builds simple scenes from your SRT. A hand-written story file looks better.':'Story file = the .py I write for each script.'}
 function projChanged(){vidKey='';sheetSrc='';refresh()}
 function card(id,rid,f,ico,empty,sub){const el=$(id);el.className='drop'+(f?' ok':'');
  el.querySelector('.ico').textContent=f?'✅':ico;el.querySelector('.ttl').textContent=f?f.name:empty;
  el.querySelector('.sm').textContent=f?f.mb+' MB · added '+new Date(f.time*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+' · drop a new file to replace':sub;
  $(rid).style.display=f?'':'none'}
+const vidRow=(v,latest)=>'<div class="vid"><div class="t"><b>'+v.name+'</b>'+(latest?'<span class="pill">Latest</span>':'')+'<span class="hint">'+v.mb+' MB · '+new Date(v.mtime*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</span><a href="'+v.url+'?dl=1"><button class="sec">Download</button></a><button class="rm" onclick="delVid(\''+v.name+'\')">🗑 Delete</button></div><video controls preload="'+(latest?'metadata':'none')+'" src="'+v.url+'?t='+Math.round(v.mtime)+'"></video></div>';
+function vidsHtml(vids){if(!vids.length)return '';let h=vidRow(vids[0],true);
+ if(vids.length>1)h+='<details style="margin-top:14px"><summary>Older videos ('+(vids.length-1)+')</summary>'+vids.slice(1).map(v=>vidRow(v,false)).join('')+'</details>';return h}
+async function delVid(name){if(!confirm('Delete '+name+' from the outputs folder?'))return;await fetch('/api/video?name='+encodeURIComponent(name),{method:'DELETE'});vidKey='';await load()}
 function refresh(){if(!S)return;const p=S.projects.find(x=>x.name===proj())||{};
  card('dAudio','rAudio',p.audio,'🎙','Drop voiceover here','mp3 / wav / m4a');card('dSrt','rSrt',p.srt,'📝','Drop SRT here','.srt');
  const vids=p.videos||[];const key=JSON.stringify(vids.map(v=>[v.name,v.mtime]));
  $('outCard').style.display=(p.preview||vids.length)?'':'none';
  $('sheetBox').style.display=p.preview?'':'none';
  if(p.preview){const src='/file/'+p.name+'/build/preview/sheet.jpg?t='+bust;if(src!==sheetSrc){sheetSrc=src;$('sheet').src=src}}
- if(key!==vidKey){vidKey=key;$('vids').innerHTML=vids.map(v=>'<div class="vid"><div class="t"><b>'+v.name+'</b><span class="hint">'+v.mb+' MB</span><a href="'+v.url+'?dl=1"><button class="sec">Download</button></a></div><video controls preload="metadata" src="'+v.url+'?t='+Math.round(v.mtime)+'"></video></div>').join('')}
+ if(key!==vidKey){vidKey=key;$('vids').innerHTML=vidsHtml(vids)}
  $('outPath').textContent='Saved videos folder: '+S.outputs}
 function tick(){const j=S&&S.job;if(!j)return;const bar=$('prog');
  if(!(view.running||j.status==='done'&&lastDone===('done'+j.started)&&Date.now()-view.doneAt<20000)){ if(!view.running){return} }
@@ -99,7 +114,7 @@ function tick(){const j=S&&S.job;if(!j)return;const bar=$('prog');
 async function load(){let r;try{r=await fetch('/api/state')}catch(e){return}S=await r.json();
  $('engineCard').style.display=S.engine_ok?'none':'';if(!S.engine_ok&&!$('enginePath').value)$('enginePath').value=S.engine;
  const sel=$('story'),cur=sel.value;const opts=S.stories.map(s=>'<option value="'+s.path.replace(/"/g,'&quot;')+'">'+s.label+'</option>').join('');
- if(sel.dataset.o!==opts){sel.innerHTML=opts;sel.dataset.o=opts;if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur}
+ if(sel.dataset.o!==opts){sel.innerHTML=opts;sel.dataset.o=opts;if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;storyChanged()}
  const j=S.job,run=j.running;$('bPrev').disabled=run;$('bVid').disabled=run||!S.engine_ok;$('bStop').style.display=run?'':'none';
  if(j.log.length||run){$('logWrap').style.display='';const t=j.log.join('\n');if($('log').textContent!==t){$('log').textContent=t;$('log').scrollTop=$('log').scrollHeight}}
  const changed=view.pct!==j.pct||view.label!==j.label;
@@ -107,7 +122,7 @@ async function load(){let r;try{r=await fetch('/api/state')}catch(e){return}S=aw
  const showProg=run||(j.status!=='idle'&&j.pct>0);$('prog').style.display=showProg?'':'none';
  if(showProg){let txt=run?(j.label||'Working')+'  ·  elapsed '+fmt(Date.now()/1000-j.started):'';if(!run)txt=j.status==='done'?'Finished in '+fmt(j.stage_t-j.started):'Stopped at '+j.pct+'%';$('progTxt').textContent=txt;
   if(!run){$('barIn').style.width=j.pct+'%';$('barTxt').textContent=j.pct+'%'}}
- if(!run&&j.status!=='idle'&&lastDone!==j.status+j.started){lastDone=j.status+j.started;bust=Date.now();sheetSrc='';vidKey='';
+ if(!run&&j.status!=='idle'&&lastDone!==j.status+j.started){lastDone=j.status+j.started;bust=Date.now();sheetSrc='';vidKey='';if(j.status==='done')setTimeout(()=>$('outCard').scrollIntoView({behavior:'smooth',block:'start'}),600);
    $('runMsg').style.color=j.status==='done'?'var(--ok)':'var(--bad)';$('runMsg').textContent=j.status==='done'?(j.mode==='video'?'Video ready ✔ saved in the outputs folder':'Preview ready ✔'):'Job '+j.status+' - open "Show log" below for details.'}
  refresh()}
 setInterval(load,1500);setInterval(()=>{const j=S&&S.job;if(!j||!view.running)return;const dt=(Date.now()-view.t)/1000;let p=view.pct;if(view.nxt>view.pct)p=view.pct+(view.nxt-view.pct)*(1-Math.exp(-dt/20))*0.92;p=Math.min(99,p);$('barIn').style.width=p+'%';$('barTxt').textContent=Math.floor(p)+'%';$('progTxt').textContent=(j.label||'Working')+'  ·  elapsed '+fmt(Date.now()/1000-j.started)},250);load();

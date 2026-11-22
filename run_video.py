@@ -37,6 +37,8 @@ def main():
     ap.add_argument("--engine", default=os.environ.get("BLOCKY_ENGINE"), help="folder named blocky-shorts (unzipped skill)")
     ap.add_argument("--project", required=True)
     ap.add_argument("--story", help="python story file that writes story.json into the project")
+    ap.add_argument("--auto", action="store_true", help="build the scenes automatically from the SRT (no story file)")
+    ap.add_argument("--narrator", choices=["boy", "girl"], default="boy", help="narrator look for --auto")
     ap.add_argument("--preview-only", action="store_true")
     ap.add_argument("--fresh", action="store_true", help="delete old frames (use after any change to lines or timing)")
     ap.add_argument("--gpu", action="store_true"); ap.add_argument("--workers", type=int, default=2)
@@ -55,7 +57,12 @@ def main():
     vo = [f for f in glob.glob(os.path.join(proj, "audio", "vo.*")) if f.lower().endswith((".mp3", ".wav", ".m4a"))]
     srt = os.path.join(proj, "audio", "vo.srt")
     if not vo: sys.exit(f"Put your voiceover at {os.path.join(proj,'audio','vo.mp3')} first.")
-    if a.story:
+    if a.auto:
+        if not os.path.isfile(srt): sys.exit("Auto mode needs the SRT (audio/vo.srt).")
+        here = os.path.dirname(os.path.abspath(__file__))
+        rc, _ = run([py, os.path.join(here, "lib", "auto_story.py"), proj, "--srt", srt, "--narrator", a.narrator], eng)
+        if rc: sys.exit("Auto story builder failed (see message above).")
+    elif a.story:
         rc, _ = run([py, os.path.abspath(a.story), proj], eng)
         if rc: sys.exit("Story file failed (see message above).")
     if not os.path.isfile(os.path.join(proj, "story.json")): sys.exit("No story.json: pass --story or put one in the project folder.")
@@ -82,10 +89,17 @@ def main():
         print("\nOpen this and look at it:", sheet)
     if a.preview_only: pct(100, 100, "Preview ready"); print("Preview only. Run again without --preview-only to render the video."); return
     # frames from another quality have another size: start clean
-    marker = os.path.join(proj, "build", "frames_scale.txt"); os.makedirs(os.path.dirname(marker), exist_ok=True)
+    import hashlib
+    h = hashlib.md5(str(scale).encode())
+    for f in (os.path.join(proj, "story.json"), os.path.join(proj, "build", "timing.json")):
+        if os.path.isfile(f): h.update(open(f, "rb").read())
+    sig = h.hexdigest()
+    marker = os.path.join(proj, "build", "frames_sig.txt"); os.makedirs(os.path.dirname(marker), exist_ok=True)
     old = open(marker).read().strip() if os.path.isfile(marker) else None
-    if old != str(scale): shutil.rmtree(os.path.join(proj, "build", "frames"), ignore_errors=True)
-    open(marker, "w").write(str(scale))
+    if old != sig:
+        if old is not None: print("Story, audio timing or quality changed: re-rendering all frames.", flush=True)
+        shutil.rmtree(os.path.join(proj, "build", "frames"), ignore_errors=True)
+    open(marker, "w").write(sig)
     pct(15, 15, "Rendering frames")
     def fcb(line):
         m = re.match(r"^\s*(\d+)/(\d+)\s+(\d+)s elapsed, ~(\d+)s left", line)
