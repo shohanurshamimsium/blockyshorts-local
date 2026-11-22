@@ -1,0 +1,10 @@
+# rendered output and per-video working files
+projects/
+outputs/
+*.mp4
+# local settings and caches
+app_config.json
+__pycache__/
+*.pyc
+# original download of the engine (already unzipped in blocky-shorts/)
+Roblox Blocky.zip

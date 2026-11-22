@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blocky Video Maker</title>
+<style>
+:root{--bg:#14161c;--card:#1e222b;--line:#2f3542;--txt:#e8ebf2;--mut:#9aa3b5;--acc:#ffc93c;--ok:#4cd08a;--bad:#ff6b6b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 system-ui,Segoe UI,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:24px 16px 60px}h1{font-size:24px;margin:0 0 4px}h1 span{color:var(--acc)}
+.sub{color:var(--mut);margin-bottom:20px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.card h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:0 0 10px}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>*{flex:1;min-width:220px}
+input[type=text],select{width:100%;padding:9px 10px;background:#12141a;color:var(--txt);border:1px solid var(--line);border-radius:8px;font:inherit}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:18px 10px;text-align:center;color:var(--mut);cursor:pointer;transition:.15s}
+.drop.over{border-color:var(--acc);color:var(--txt)}.drop.ok{border-style:solid;border-color:var(--ok);color:var(--ok)}
+button{background:var(--acc);color:#1a1a1a;border:0;border-radius:8px;padding:10px 16px;font:600 15px inherit;cursor:pointer}
+button.sec{background:#2b303c;color:var(--txt)}button:disabled{opacity:.4;cursor:not-allowed}
+label.chk{display:flex;gap:6px;align-items:center;color:var(--mut)}
+.bar{height:22px;background:#12141a;border-radius:11px;overflow:hidden;border:1px solid var(--line);position:relative}
+.bar>div{height:100%;width:0;background:linear-gradient(90deg,#ffb300,#ffd54a);transition:width .25s linear}
+.bar>span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 12px system-ui;color:#fff;text-shadow:0 0 3px #000}
+pre{background:#0d0f13;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:240px;overflow:auto;font-size:12px;white-space:pre-wrap;margin:10px 0 0}
+img,video{max-width:100%;border-radius:8px;border:1px solid var(--line)}video{max-height:620px}
+.msg{color:var(--bad);margin-top:8px;min-height:1em}.hint{color:var(--mut);font-size:13px}
+.vid{margin-top:14px}.vid .t{display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+details summary{cursor:pointer;color:var(--mut);margin-top:10px}
+</style></head><body><div class="wrap">
+<h1>Blocky <span>Video Maker</span></h1>
+<div class="sub">Drop your voiceover and SRT, pick the story file, press the button. Everything runs on this PC.</div>
+
+<div class="card" id="engineCard" style="display:none"><h2>Engine folder not found</h2>
+ <div class="hint">Paste the full path of your <b>blocky-shorts</b> folder (the one that contains <code>scripts</code>).</div>
+ <div class="row" style="margin-top:8px"><input type="text" id="enginePath" placeholder="I:\blocky-local\blocky-shorts"><button onclick="saveEngine()" style="flex:0">Save</button></div>
+ <div class="msg" id="engMsg"></div></div>
+
+<div class="card"><h2>Project</h2>
+ <div class="row"><div><input type="text" id="proj" value="my_video" oninput="projChanged()"><div class="hint">Each video = one project name. Same name again re-uses its audio.</div></div>
+ <div><select id="story"></select><div class="hint">Story file = the .py I write for each script.</div></div></div></div>
+
+<div class="card"><h2>Files</h2><div class="row">
+ <div><div class="drop" id="dAudio" onclick="pick('audio')">🎙 Drop voiceover here<br><small>mp3 / wav / m4a</small></div><input type="file" id="fAudio" hidden accept=".mp3,.wav,.m4a,.ogg,.flac,.aac"></div>
+ <div><div class="drop" id="dSrt" onclick="pick('srt')">📝 Drop SRT here<br><small>.srt</small></div><input type="file" id="fSrt" hidden accept=".srt"></div>
+ <div><div class="drop" id="dStory" onclick="pick('story')">🧱 Drop new story .py here<br><small>optional</small></div><input type="file" id="fStory" hidden accept=".py"></div>
+</div><div class="msg" id="upMsg"></div></div>
+
+<div class="card"><h2>Make it</h2>
+ <div class="row" style="align-items:center">
+  <div><select id="quality"><option value="draft">Draft · 720p · fast</option><option value="standard" selected>Standard · 1080p</option><option value="max">Max · 1080p · best encode (slowest)</option></select></div>
+  <label class="chk"><input type="checkbox" id="gpu" checked> Use GPU</label>
+  <label class="chk"><input type="checkbox" id="fresh"> Re-render from scratch</label>
+ </div>
+ <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="sec" id="bPrev" onclick="run('preview')">1 · Preview sheet</button><button id="bVid" onclick="run('video')">2 · Make video</button><button class="sec" id="bStop" onclick="stopJob()" style="display:none">Stop</button></div>
+ <div class="hint" style="margin-top:8px">Do the preview first to check framing, then make the video. Changed the story or SRT? Tick "Re-render from scratch".</div>
+ <div class="msg" id="runMsg"></div>
+ <div id="prog" style="display:none;margin-top:10px"><div class="bar"><div id="barIn"></div><span id="barTxt">0%</span></div><div class="hint" id="progTxt" style="margin-top:6px"></div></div>
+ <details id="logWrap" style="display:none"><summary>Show log</summary><pre id="log"></pre></details></div>
+
+<div class="card" id="outCard" style="display:none"><h2>Result</h2>
+ <div id="sheetBox" style="display:none"><div class="hint">Preview sheet (check characters are in frame, captions readable)</div><img id="sheet" alt="preview sheet"></div>
+ <div id="vids"></div>
+ <p class="hint" id="outPath" style="margin-top:14px"></p><button class="sec" onclick="openFolder()">📂 Open outputs folder</button></div>
+</div>
+<script>
+const $=id=>document.getElementById(id);let S=null,lastDone=null,bust=Date.now(),vidKey='',sheetSrc='',view={pct:0,nxt:0,t:0,label:'',running:false};
+const proj=()=>$('proj').value.trim().replace(/[^A-Za-z0-9_\-]/g,'_')||'my_video';
+const fmt=s=>{s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+function pick(k){$({audio:'fAudio',srt:'fSrt',story:'fStory'}[k]).click()}
+['audio:dAudio:fAudio','srt:dSrt:fSrt','story:dStory:fStory'].forEach(s=>{const[k,d,f]=s.split(':');const el=$(d);
+ el.ondragover=e=>{e.preventDefault();el.classList.add('over')};el.ondragleave=()=>el.classList.remove('over');
+ el.ondrop=e=>{e.preventDefault();el.classList.remove('over');if(e.dataTransfer.files[0])upload(k,e.dataTransfer.files[0])};
+ $(f).onchange=e=>{if(e.target.files[0])upload(k,e.target.files[0])}});
+async function upload(kind,file){$('upMsg').textContent='Uploading '+file.name+'…';
+ const r=await fetch('/api/upload?project='+encodeURIComponent(proj())+'&kind='+kind+'&name='+encodeURIComponent(file.name),{method:'PUT',body:file});
+ const j=await r.json();$('upMsg').textContent=r.ok?'':(j.error||'Upload failed');await load()}
+async function saveEngine(){const r=await fetch('/api/config',{method:'POST',body:JSON.stringify({engine:$('enginePath').value})});const j=await r.json();$('engMsg').textContent=r.ok?'':j.error;load()}
+async function run(mode){$('runMsg').textContent='';const r=await fetch('/api/run',{method:'POST',body:JSON.stringify({project:proj(),story:$('story').value,mode,gpu:$('gpu').checked,fresh:$('fresh').checked,quality:$('quality').value})});
+ const j=await r.json();if(!r.ok)$('runMsg').textContent=j.error||j.message;else{$('runMsg').textContent='';lastDone=null}await load()}
+async function stopJob(){await fetch('/api/stop',{method:'POST',body:'{}'})}
+async function openFolder(){await fetch('/api/open',{method:'POST',body:'{}'})}
+function projChanged(){vidKey='';sheetSrc='';refresh()}
+function refresh(){if(!S)return;const p=S.projects.find(x=>x.name===proj())||{};
+ $('dAudio').className='drop'+(p.audio?' ok':'');$('dAudio').firstChild.textContent=p.audio?'✅ Voiceover ready ':'🎙 Drop voiceover here';
+ $('dSrt').className='drop'+(p.srt?' ok':'');$('dSrt').firstChild.textContent=p.srt?'✅ SRT ready ':'📝 Drop SRT here';
+ const vids=p.videos||[];const key=JSON.stringify(vids.map(v=>[v.name,v.mtime]));
+ $('outCard').style.display=(p.preview||vids.length)?'':'none';
+ $('sheetBox').style.display=p.preview?'':'none';
+ if(p.preview){const src='/file/'+p.name+'/build/preview/sheet.jpg?t='+bust;if(src!==sheetSrc){sheetSrc=src;$('sheet').src=src}}
+ if(key!==vidKey){vidKey=key;$('vids').innerHTML=vids.map(v=>'<div class="vid"><div class="t"><b>'+v.name+'</b><span class="hint">'+v.mb+' MB</span><a href="'+v.url+'?dl=1"><button class="sec">Download</button></a></div><video controls preload="metadata" src="'+v.url+'?t='+Math.round(v.mtime)+'"></video></div>').join('')}
+ $('outPath').textContent='Saved videos folder: '+S.outputs}
+function tick(){const j=S&&S.job;if(!j)return;const bar=$('prog');
+ if(!(view.running||j.status==='done'&&lastDone===('done'+j.started)&&Date.now()-view.doneAt<20000)){ if(!view.running){return} }
+ const dt=(Date.now()-view.t)/1000;let p=view.pct;
+ if(view.running&&view.nxt>view.pct){p=view.pct+(view.nxt-view.pct)*(1-Math.exp(-dt/20))*0.92}
+ p=Math.min(100,p);$('barIn').style.width=p+'%';$('barTxt').textContent=Math.floor(p)+'%'}
+async function load(){let r;try{r=await fetch('/api/state')}catch(e){return}S=await r.json();
+ $('engineCard').style.display=S.engine_ok?'none':'';if(!S.engine_ok&&!$('enginePath').value)$('enginePath').value=S.engine;
+ const sel=$('story'),cur=sel.value;const opts=S.stories.map(s=>'<option value="'+s.path.replace(/"/g,'&quot;')+'">'+s.label+'</option>').join('');
+ if(sel.dataset.o!==opts){sel.innerHTML=opts;sel.dataset.o=opts;if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur}
+ const j=S.job,run=j.running;$('bPrev').disabled=run;$('bVid').disabled=run||!S.engine_ok;$('bStop').style.display=run?'':'none';
+ if(j.log.length||run){$('logWrap').style.display='';const t=j.log.join('\n');if($('log').textContent!==t){$('log').textContent=t;$('log').scrollTop=$('log').scrollHeight}}
+ const changed=view.pct!==j.pct||view.label!==j.label;
+ view.running=run;if(changed||!view.t){view.pct=j.pct;view.nxt=j.nxt;view.label=j.label;view.t=Date.now()}
+ const showProg=run||(j.status!=='idle'&&j.pct>0);$('prog').style.display=showProg?'':'none';
+ if(showProg){let txt=run?(j.label||'Working')+'  ·  elapsed '+fmt(Date.now()/1000-j.started):'';if(!run)txt=j.status==='done'?'Finished in '+fmt(j.stage_t-j.started):'Stopped at '+j.pct+'%';$('progTxt').textContent=txt;
+  if(!run){$('barIn').style.width=j.pct+'%';$('barTxt').textContent=j.pct+'%'}}
+ if(!run&&j.status!=='idle'&&lastDone!==j.status+j.started){lastDone=j.status+j.started;bust=Date.now();sheetSrc='';vidKey='';
+   $('runMsg').style.color=j.status==='done'?'var(--ok)':'var(--bad)';$('runMsg').textContent=j.status==='done'?(j.mode==='video'?'Video ready ✔ saved in the outputs folder':'Preview ready ✔'):'Job '+j.status+' - open "Show log" below for details.'}
+ refresh()}
+setInterval(load,1500);setInterval(()=>{const j=S&&S.job;if(!j||!view.running)return;const dt=(Date.now()-view.t)/1000;let p=view.pct;if(view.nxt>view.pct)p=view.pct+(view.nxt-view.pct)*(1-Math.exp(-dt/20))*0.92;p=Math.min(99,p);$('barIn').style.width=p+'%';$('barTxt').textContent=Math.floor(p)+'%';$('progTxt').textContent=(j.label||'Working')+'  ·  elapsed '+fmt(Date.now()/1000-j.started)},250);load();
+</script></body></html>
