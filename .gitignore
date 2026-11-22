@@ -8,3 +8,6 @@ __pycache__/
 *.pyc
 # original download of the engine (already unzipped in blocky-shorts/)
 Roblox Blocky.zip
+
+# files Claude sends to this folder
+Claude outputs/
